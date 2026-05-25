@@ -81,6 +81,9 @@ const ASCII_CHARS = [
 
 export const HandTracker = () => {
   const rectModeRef = useRef<"ascii" | "heat">("ascii");
+  const orbiterAnglesRef = useRef<number[]>(
+    Array.from({ length: 30 }, (_, i) => (i / 8) * Math.PI * 2),
+  );
   const pinchCooldownRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const outerFilledSegmentsRef = useRef<Map<number, string>>(new Map());
@@ -172,9 +175,11 @@ export const HandTracker = () => {
         y(lm[0].y) - y(lm[9].y),
       );
       const normalizedSize = handSize / 200;
-      const radius = (40 + openness * 60) * normalizedSize;
+      const collapseScale = Math.max(0, (openness - 0.15) * 3);
+      const innerOpacity = Math.min(1, collapseScale * 2);
+      const radius = (60 + openness * 60) * normalizedSize * collapseScale;
       const numRects = 20;
-      const rectHeight = 40;
+      const rectHeight = 65;
       const rectWidth = 25;
 
       if (Math.random() < 0.3) {
@@ -213,6 +218,7 @@ export const HandTracker = () => {
         }
       });
 
+      ctx.globalAlpha = innerOpacity;
       for (let i = 0; i < numRects; i++) {
         const angle = (i / numRects) * Math.PI * 2 - handAngle;
         const cx = palm.x + Math.cos(angle) * radius;
@@ -261,9 +267,13 @@ export const HandTracker = () => {
         ctx.restore();
       }
 
-      const outerRadius = radius + rectHeight + 45;
-      const outerNumRects = 25;
-      const outerRectHeight = 75;
+      ctx.globalAlpha = 1;
+
+      // Outer Cirlce
+
+      const outerRadius = radius + rectHeight + 30;
+      const outerNumRects = 30;
+      const outerRectHeight = 60;
       const outerRectWidth = 25;
 
       if (Math.random() < 0.3) {
@@ -302,51 +312,117 @@ export const HandTracker = () => {
         }
       });
 
-      for (let i = 0; i < outerNumRects; i++) {
-        const angle = (i / outerNumRects) * Math.PI * 2 + handAngle;
-        const cx = palm.x + Math.cos(angle) * outerRadius;
-        const cy = palm.y + Math.sin(angle) * outerRadius;
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle + Math.PI / 2);
-
-        const topW = outerRectWidth;
-        const botW = outerRectWidth * 0.5;
-        const h = outerRectHeight + openness * 30;
-        const r = 4;
-
+      if (collapseScale <= 0.1) {
+        // draw plain circle when hand closed
         ctx.beginPath();
-        ctx.moveTo(-topW / 2 + r, -h / 2);
-        ctx.lineTo(topW / 2 - r, -h / 2);
-        ctx.arcTo(topW / 2, -h / 2, topW / 2, -h / 2 + r, r);
-        ctx.lineTo(botW / 2, h / 2 - r);
-        ctx.arcTo(botW / 2, h / 2, botW / 2 - r, h / 2, r);
-        ctx.lineTo(-botW / 2 + r, h / 2);
-        ctx.arcTo(-botW / 2, h / 2, -botW / 2, h / 2 - r, r);
-        ctx.lineTo(-topW / 2, -h / 2 + r);
-        ctx.arcTo(-topW / 2, -h / 2, -topW / 2 + r, -h / 2, r);
-        ctx.closePath();
+        ctx.arc(palm.x, palm.y, outerRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+        ctx.stroke();
+      } else {
+        for (let i = 0; i < outerNumRects; i++) {
+          const angle = (i / outerNumRects) * Math.PI * 2 + handAngle;
+          const cx = palm.x + Math.cos(angle) * outerRadius;
+          const cy = palm.y + Math.sin(angle) * outerRadius;
 
-        const outerDisplayed = outerDisplayedSegmentsRef.current.get(i);
-        if (outerDisplayed) {
-          const base = outerDisplayed.color.replace(
-            /[\d.]+\)$/,
-            `${outerDisplayed.alpha})`,
-          );
-          ctx.fillStyle = base;
-          ctx.shadowBlur = 40 * outerDisplayed.alpha;
-          ctx.shadowColor = outerDisplayed.color;
-          ctx.fill();
-        } else {
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-          ctx.lineWidth = 1.5;
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
-          ctx.stroke();
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle + Math.PI / 2);
+
+          const topW = outerRectWidth;
+          const botW = outerRectWidth * 0.5;
+          const h = (outerRectHeight + openness * 30) * collapseScale;
+          const r = 4;
+
+          ctx.beginPath();
+          ctx.moveTo(-topW / 2 + r, -h / 2);
+          ctx.lineTo(topW / 2 - r, -h / 2);
+          ctx.arcTo(topW / 2, -h / 2, topW / 2, -h / 2 + r, r);
+          ctx.lineTo(botW / 2, h / 2 - r);
+          ctx.arcTo(botW / 2, h / 2, botW / 2 - r, h / 2, r);
+          ctx.lineTo(-botW / 2 + r, h / 2);
+          ctx.arcTo(-botW / 2, h / 2, -botW / 2, h / 2 - r, r);
+          ctx.lineTo(-topW / 2, -h / 2 + r);
+          ctx.arcTo(-topW / 2, -h / 2, -topW / 2 + r, -h / 2, r);
+          ctx.closePath();
+
+          const outerDisplayed = outerDisplayedSegmentsRef.current.get(i);
+          if (outerDisplayed) {
+            const base = outerDisplayed.color.replace(
+              /[\d.]+\)$/,
+              `${outerDisplayed.alpha})`,
+            );
+            ctx.fillStyle = base;
+            ctx.shadowBlur = 40 * outerDisplayed.alpha;
+            ctx.shadowColor = outerDisplayed.color;
+            ctx.fill();
+          } else {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+            ctx.stroke();
+          }
+
+          ctx.restore();
         }
+        // orbiting circles outside outer ring
+        const numOrbiters = 8;
+        const orbiterRadius = outerRadius + 40;
 
-        ctx.restore();
+        for (let i = 0; i < numOrbiters; i++) {
+          // target angle matches the rect it's tied to
+          const rectIndex = Math.floor((i / numOrbiters) * outerNumRects);
+          const targetAngle =
+            (rectIndex / outerNumRects) * Math.PI * 2 + handAngle;
+
+          // lag — orbiter slowly follows target
+          const currentAngle = orbiterAnglesRef.current[i];
+          const angleDelta = targetAngle - currentAngle;
+          orbiterAnglesRef.current[i] += angleDelta * 0.08;
+
+          const laggingAngle = orbiterAnglesRef.current[i];
+
+          // rect anchor point
+          const rectAngle = targetAngle;
+          const rx = palm.x + Math.cos(rectAngle) * outerRadius;
+          const ry = palm.y + Math.sin(rectAngle) * outerRadius;
+
+          // orbiter position
+          const ox = palm.x + Math.cos(laggingAngle) * orbiterRadius;
+          const oy = palm.y + Math.sin(laggingAngle) * orbiterRadius;
+
+          // dotted rope from rect to orbiter
+          const steps = 10;
+          for (let t = 0; t <= steps; t++) {
+            const tt = t / steps;
+            const dx = rx + (ox - rx) * tt;
+            const dy = ry + (oy - ry) * tt;
+            if (t % 2 === 0) {
+              ctx.beginPath();
+              ctx.arc(dx, dy, 1.5, 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(255, 255, 255, ${0.6 - tt * 0.3})`;
+              ctx.fill();
+            }
+          }
+
+          // orbiter circle
+          ctx.beginPath();
+          ctx.arc(ox, oy, 10 + collapseScale * 4, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.lineWidth = 1.5;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = "rgba(255, 255, 255, 0.4)";
+          ctx.stroke();
+
+          // inner dot
+          ctx.beginPath();
+          ctx.arc(ox, oy, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+          ctx.fill();
+        }
       }
     }
     // rectangle + ascii
